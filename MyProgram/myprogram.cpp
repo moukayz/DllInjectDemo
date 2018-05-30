@@ -7,6 +7,7 @@ int main()
 	while (TRUE)
 	{
 		Sleep(1000);
+		//MessageBox(NULL, "haha", NULL, 0x30);
 		printf("Count %d\n", count++);
 	}
 
