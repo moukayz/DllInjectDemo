@@ -21,19 +21,50 @@ VOID ErrorExit(LPCSTR lpszFunction);
 */
 byte wrapper[] = { 0x6a,0x30,0x6a,0x00,0x68,0xcc,0xcc,0xcc,0xcc,0x6a,0x00,0xb8,0xff,0xff,0xff,0xff,0xff,0xd0,0xc3 };
 
+BYTE codeCave32[] = {
+	0x60,                         // PUSHAD
+	0x9C,                         // PUSHFD
+	0x68, 0x00, 0x00, 0x00, 0x00, // PUSH remoteDllPath (3)	  remoteDllPath
+	0xB8, 0x00, 0x00, 0x00, 0x00, // MOV EAX, LoadLibraryAddress (8) LoadLibraryAddress
+	0xFF, 0xD0,                   // CALL EAX
+	//0x83, 0xC4, 0x04,             // ADD ESP, 0x04
+	0x9D,                         // POPFD
+	0x61,                         // POPAD
+	0x68, 0x00, 0x00, 0x00, 0x00, // PUSH originalEip (20)	originalEip
+	0xC3                          // RETN
+};
+
+BYTE codeCave64[] = {
+	0x48, 0x83, 0xEC, 0x28,                 // sub rsp, 0x28
+	0x48, 0xb9, 0, 0, 0, 0, 0, 0, 0,0, // mov rcx, remoteDllPath (6)
+	0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0,0, // mov rax, LoadLibraryAddress (16)
+	0xFF, 0xD0,                             // call rax
+	0x48, 0x83, 0xC4, 0x28,                 // add rsp, 0x28
+	0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0,0, // mov rax, originalRip (32)
+	0x50,				// push rax
+	0xc3
+
+};
+
+#ifdef _AMD64_
+#define codeCave codeCave64
+#else
+#define codeCave codeCave32
+#endif
 
 int main()
 {
 	UINT32 procID;
 	HANDLE process;
 	LPVOID remoteWrapper;
-	LPVOID remoteText;
+	LPVOID remoteDllPath;
+	LPVOID loadLibraryAddress = NULL;
 	HANDLE hThread;
-	const char *text = "Injected Hello World";
+	const char *text = "R:\\DllInjectDemo\\Bin\\MyDll.dll";
 
 
 	// Get injected process handle by PID
-	if (!(procID = FindProcessId("MyProgram.exe")))
+	if (!(procID = FindProcessId("windbg.exe")))
 	{
 		printf_s("Error: Cannot find process ID!\nExited.\n");
 
@@ -49,7 +80,7 @@ int main()
 	log_debug("Get process handle : %p", &process);
 
 	if (!(remoteWrapper = VirtualAllocEx(process, NULL,
-		sizeof(wrapper), MEM_COMMIT, PAGE_EXECUTE_READWRITE)))
+		sizeof(codeCave), MEM_COMMIT, PAGE_EXECUTE_READWRITE)))
 	{
 		ErrorExit(TEXT("Cannot allocate memory for remote wrapper!"));
 
@@ -57,15 +88,15 @@ int main()
 	log_debug("Get allocated remote wrapper address : %p", remoteWrapper);
 
 
-	if (!(remoteText = VirtualAllocEx(process, NULL,
+	if (!(remoteDllPath = VirtualAllocEx(process, NULL,
 		sizeof(text) + 1, MEM_COMMIT, PAGE_READWRITE)))
 	{
 		ErrorExit(TEXT("Cannot allocate memory for output text!"));
 
 	}
-	log_debug("Get allocated remote text address: %p", remoteText);
+	log_debug("Get allocated remote text address: %p", remoteDllPath);
 
-	if (!WriteProcessMemory(process, remoteText, (LPVOID)text, strlen(text) + 1, NULL))
+	if (!WriteProcessMemory(process, remoteDllPath, (LPVOID)text, strlen(text) + 1, NULL))
 	{
 		ErrorExit(TEXT("Cannot write  text to process memory!"));
 
@@ -81,36 +112,48 @@ int main()
 
 	}
 
-	*(DWORD*)(wrapper + 5) = (DWORD)remoteText;
-	if (!(*(DWORD*)(wrapper + 12) =
-		(DWORD)GetProcAddress(LoadLibrary("USER32.DLL"), "MessageBoxA")))
+	loadLibraryAddress = (LPVOID)GetProcAddress(LoadLibrary("KERNEL32.DLL"), "LoadLibraryA");
+	if (!loadLibraryAddress)
 	{
-		ErrorExit(TEXT("Cannot find the address of function MessageBoxA! "));
-
-	}
-
-	if (!WriteProcessMemory(process, remoteWrapper,
-		(LPVOID)wrapper, sizeof(wrapper), NULL))
-	{
-		ErrorExit(TEXT("Cannot write wrapper to process memory!"));
-
+		ErrorExit(TEXT("Cannot find the address of function LoadLibraryA! "));
 	}
 
 	CONTEXT context;
 	hThread = GetMainThread(procID);
+	if (!hThread) return 1;
 	if (SuspendThread(hThread) == -1)
 	{
 		ErrorExit(TEXT("SuspendThread"));
 	}
 	memset(&context, NULL, sizeof(context));
-	context.ContextFlags = CONTEXT_ALL;
+	context.ContextFlags = CONTEXT_CONTROL;
 
 	if (!GetThreadContext(hThread, &context))
 	{
 		ErrorExit(TEXT("Get thread context failed!"));
 	}
 
-	context.Eip = (DWORD)wrapper;
+#ifndef _AMD64_
+	*(DWORD*)(codeCave + 3) = (DWORD)remoteDllPath;
+	*(DWORD*)(codeCave + 8) = (DWORD)loadLibraryAddress;
+	*(DWORD*)(codeCave + 17) = (DWORD)context.Eip;
+
+	context.Eip = (DWORD)remoteWrapper;
+#else	
+	*(ULONG_PTR*)(codeCave + 6) = (ULONG_PTR)remoteDllPath;
+	*(ULONG_PTR*)(codeCave + 16) = (ULONG_PTR)loadLibraryAddress;
+	*(ULONG_PTR*)(codeCave + 32) = (ULONG_PTR)context.Rip;
+
+	context.Rip = (ULONG_PTR)remoteWrapper;
+#endif
+	if (!WriteProcessMemory(process, remoteWrapper,
+		(LPVOID)codeCave, sizeof(codeCave), NULL))
+	{
+		ErrorExit(TEXT("Cannot write wrapper to process memory!"));
+
+	}
+
+
 	if (!SetThreadContext(hThread, &context))
 	{
 		ErrorExit(TEXT("Set thread context failed"));
@@ -165,8 +208,8 @@ DWORD FindProcessId(const char *processname)
 
 HANDLE GetMainThread(DWORD dwOwnerPID)
 {
-	HANDLE  hThreadSnap = INVALID_HANDLE_VALUE;
-	HANDLE hThread = INVALID_HANDLE_VALUE;
+	HANDLE  hThreadSnap = NULL;
+	HANDLE hThread = NULL;
 	THREADENTRY32 te32;
 
 	// Take a snapshot of all running threads
@@ -233,5 +276,6 @@ VOID ErrorExit(LPCSTR lpszFunction)
 
 	LocalFree(lpMsgBuf);
 	LocalFree(lpDisplayBuf);
+	system("PAUSE");
 	ExitProcess(dw);
 }

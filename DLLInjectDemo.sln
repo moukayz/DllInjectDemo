@@ -13,6 +13,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ArbitraryCode_Injector", "A
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThreadHijack_Injector", "ThreadHijack_Injector\ThreadHijack_Injector.vcxproj", "{149DFE19-E39A-44A3-89AA-689CD8FF9205}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MyWindowProgram", "MyWindowProgram\MyWindowProgram.vcxproj", "{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -61,6 +63,14 @@ Global
 		{149DFE19-E39A-44A3-89AA-689CD8FF9205}.Release|x64.Build.0 = Release|x64
 		{149DFE19-E39A-44A3-89AA-689CD8FF9205}.Release|x86.ActiveCfg = Release|Win32
 		{149DFE19-E39A-44A3-89AA-689CD8FF9205}.Release|x86.Build.0 = Release|Win32
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Debug|x64.ActiveCfg = Debug|x64
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Debug|x64.Build.0 = Debug|x64
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Debug|x86.ActiveCfg = Debug|Win32
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Debug|x86.Build.0 = Debug|Win32
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x64.ActiveCfg = Release|x64
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x64.Build.0 = Release|x64
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x86.ActiveCfg = Release|Win32
+		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
