@@ -3,11 +3,10 @@
 #include <TlHelp32.h>
 #include <strsafe.h>
 
-#include "log.h"
+//#include "log.h"
+#include "..\Common\log.hpp"
+#include "..\Common\utils.hpp"
 
-DWORD FindProcessId(const char *processname);
-HANDLE GetMainThread(DWORD dwOwnerPID);
-VOID ErrorExit(LPCSTR lpszFunction);
 /*
 * bytecode of the MessageBox function
 * ******
@@ -170,112 +169,4 @@ int main()
 	CloseHandle(hThread);
 
 
-}
-
-DWORD FindProcessId(const char *processname)
-{
-	HANDLE hProcessSnap;
-	PROCESSENTRY32 pe32;
-	DWORD result = NULL;
-
-	// Take a snapshot of all processes in the system.
-	hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (INVALID_HANDLE_VALUE == hProcessSnap) return(FALSE);
-
-	pe32.dwSize = sizeof(PROCESSENTRY32); // <----- IMPORTANT
-
-										  // Retrieve information about the first process,
-										  // and exit if unsuccessful
-	if (!Process32First(hProcessSnap, &pe32))
-	{
-		CloseHandle(hProcessSnap);          // clean the snapshot object
-		ErrorExit(TEXT(" Failed to gather information on system processes! "));
-	}
-
-	do
-	{
-		if (0 == strcmp(processname, pe32.szExeFile))
-		{
-			result = pe32.th32ProcessID;
-			break;
-		}
-	} while (Process32Next(hProcessSnap, &pe32));
-
-	CloseHandle(hProcessSnap);
-
-	return result;
-}
-
-HANDLE GetMainThread(DWORD dwOwnerPID)
-{
-	HANDLE  hThreadSnap = NULL;
-	HANDLE hThread = NULL;
-	THREADENTRY32 te32;
-
-	// Take a snapshot of all running threads
-	if ((hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0)) ==
-		INVALID_HANDLE_VALUE)
-	{
-		ErrorExit(TEXT("Cannot create thread snapshot!"));
-
-	}
-
-	te32.dwSize = sizeof(THREADENTRY32);
-
-	// Retrieve infomation about the frist thread
-	if (!Thread32First(hThreadSnap, &te32))
-	{
-		ErrorExit(TEXT("Cannot get the handle of the first thread!"));
-
-	}
-
-	while (te32.th32OwnerProcessID != dwOwnerPID)
-	{
-		Thread32Next(hThreadSnap, &te32);
-	}
-
-	// Return the main thread's handle
-	if (!(hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, te32.th32ThreadID)))
-	{
-		ErrorExit(TEXT("Open main thread of the remote process failed!"));
-
-	}
-
-	return hThread;
-
-}
-
-VOID ErrorExit(LPCSTR lpszFunction)
-{
-	// Retrieve the system error message for the last-error code
-
-	LPVOID lpMsgBuf;
-	LPVOID lpDisplayBuf;
-	DWORD dw = GetLastError();
-
-	FormatMessage(
-		FORMAT_MESSAGE_ALLOCATE_BUFFER |
-		FORMAT_MESSAGE_FROM_SYSTEM |
-		FORMAT_MESSAGE_IGNORE_INSERTS,
-		NULL,
-		dw,
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		(LPTSTR)&lpMsgBuf,
-		0, NULL);
-
-	// Display the error message and exit the process
-
-	lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
-		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
-	StringCchPrintf((LPTSTR)lpDisplayBuf,
-		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-		TEXT("%s ---- error code %d: %s"),
-		lpszFunction, dw, lpMsgBuf);
-	//MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
-	log_error((LPCSTR)lpDisplayBuf);
-
-	LocalFree(lpMsgBuf);
-	LocalFree(lpDisplayBuf);
-	system("PAUSE");
-	ExitProcess(dw);
 }

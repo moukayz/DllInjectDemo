@@ -15,6 +15,14 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ThreadHijack_Injector", "Th
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MyWindowProgram", "MyWindowProgram\MyWindowProgram.vcxproj", "{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SetWndHook_injector", "SetWndHook_injector\SetWndHook_injector.vcxproj", "{4E4C416D-2CB5-420A-8016-6C52C12065C6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{57723F95-BFCA-4224-95B7-0D67C33C555D}"
+	ProjectSection(SolutionItems) = preProject
+		Common\log.hpp = Common\log.hpp
+		Common\utils.hpp = Common\utils.hpp
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -71,6 +79,14 @@ Global
 		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x64.Build.0 = Release|x64
 		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x86.ActiveCfg = Release|Win32
 		{93F81C67-1E8E-4D9B-AFC5-B1C8A1F3282A}.Release|x86.Build.0 = Release|Win32
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Debug|x64.ActiveCfg = Debug|x64
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Debug|x64.Build.0 = Debug|x64
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Debug|x86.ActiveCfg = Debug|Win32
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Debug|x86.Build.0 = Debug|Win32
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Release|x64.ActiveCfg = Release|x64
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Release|x64.Build.0 = Release|x64
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Release|x86.ActiveCfg = Release|Win32
+		{4E4C416D-2CB5-420A-8016-6C52C12065C6}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
