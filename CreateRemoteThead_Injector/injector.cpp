@@ -40,7 +40,7 @@ DWORD FindProcessId(const char *processname)
 
 int main()
 {
-	const char *dllpath = "MyDll.dll";
+	const char *dllpath = "R:\\DllInjectDemo\\Bin\\MyDll.dll";
 	UINT32 procID;
 	HANDLE process;
 	LPVOID llAddr;
@@ -48,7 +48,7 @@ int main()
 	HANDLE threadID;
 
 	// Get injected process handle by PID
-	if (!(procID = FindProcessId("MyProgram.exe")))
+	if (!(procID = FindProcessId("windbg.exe")))
 	{
 		printf_s("Error: Cannot find process ID!\nExited.\n");
 		exit(1);
@@ -99,7 +99,6 @@ int main()
 	{
 		printf_s("Success: the remote thread was successfully created!\n");
 	}
-
 	//CloseHandle(process);
 	//getchar();
 
@@ -110,9 +109,6 @@ int main()
 		return NULL;
 
 	CloseHandle(threadID);
-
-	if (!VirtualFreeEx(process, remotePath, 0, MEM_RELEASE));
-
 
 	return exitCode;
 }
