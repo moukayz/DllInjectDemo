@@ -127,10 +127,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ac_injector.cpp" />
-    <ClCompile Include="log.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="log.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -2,7 +2,8 @@
 #include <windows.h>
 #include <TlHelp32.h>
 
-#include "log.h"
+#include "..\Common\log.hpp"
+#include "..\Common\utils.hpp"
 
 /*
 * bytecode of the MessageBox function

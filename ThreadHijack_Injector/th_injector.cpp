@@ -3,7 +3,6 @@
 #include <TlHelp32.h>
 #include <strsafe.h>
 
-//#include "log.h"
 #include "..\Common\log.hpp"
 #include "..\Common\utils.hpp"
 
