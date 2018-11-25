@@ -25,6 +25,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Common", "Common", "{57723F
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "QueueUserApc_injector", "QueueUserApc_injector\QueueUserApc_injector.vcxproj", "{5C8B197A-8286-486F-8A3A-0D50E051FD8A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "IME_Injector", "IME_Injector\IME_Injector.vcxproj", "{8E416A92-9F41-4031-87AB-0811ADC4D870}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -97,6 +99,14 @@ Global
 		{5C8B197A-8286-486F-8A3A-0D50E051FD8A}.Release|x64.Build.0 = Release|x64
 		{5C8B197A-8286-486F-8A3A-0D50E051FD8A}.Release|x86.ActiveCfg = Release|Win32
 		{5C8B197A-8286-486F-8A3A-0D50E051FD8A}.Release|x86.Build.0 = Release|Win32
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Debug|x64.ActiveCfg = Debug|x64
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Debug|x64.Build.0 = Debug|x64
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Debug|x86.ActiveCfg = Debug|Win32
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Debug|x86.Build.0 = Debug|Win32
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Release|x64.ActiveCfg = Release|x64
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Release|x64.Build.0 = Release|x64
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Release|x86.ActiveCfg = Release|Win32
+		{8E416A92-9F41-4031-87AB-0811ADC4D870}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
