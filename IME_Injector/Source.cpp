@@ -125,10 +125,10 @@ int _tmain()
 				log_debug( "Delete ime key !" );
 			if ( keyIme == (DWORD)hIME )
 			{
-				DebugBreak();
 				if ( ERROR_SUCCESS == RegDeleteKey( hKey, subKeyName ) )
 				{
 					log_debug( "Delete ime key !" );
+					RegCloseKey(hKey);
 					break;
 				}
 				else
