@@ -5,9 +5,42 @@
 #include "..\Common\utils.hpp"
 
 #define DLLPATH _T("d:\\repos\\DllInjectDemo\\Bin\\MyDll.dll")
-#define TARGET_PROCESS	_T("MyWindowProgram.exe")
+#define TARGET_PROCESS	_T("Code.exe")
+
 #define INVALID_HANDLE(handle)	(handle == INVALID_HANDLE_VALUE)
-#define PointerAdd(PointerType, Pointer, Increment)	(PointerType)((ULONG_PTR)Pointer + Increment)
+#define OffsetToVA(address, offset)	((ULONG_PTR)(address) + (offset))
+
+#define DEREF( name )		*(PULONG_PTR)(name)
+#define DEREF_64( name )	*(PDWORD64)(name)
+#define DEREF_32( name )	*(PDWORD)(name)
+#define DEREF_16( name )	*(PWORD )(name)
+#define DEREF_8( name )		*(PBYTE)(name)
+
+// PE Field Macros
+#define DOS_HEADER(pImageBase)	((PIMAGE_DOS_HEADER)pImageBase)
+#define NT_HEADERS(pImageBase)	((PIMAGE_NT_HEADERS)(OffsetToVA(pImageBase, DOS_HEADER(pImageBase)->e_lfanew)))
+#define SEC_HEADER(pImageBase)	((PIMAGE_SECTION_HEADER)(OffsetToVA(NT_HEADERS(pImageBase), sizeof(IMAGE_NT_HEADERS))))
+#define IMAGE_SIZE(pImageBase)	(NT_HEADERS(pImageBase)->OptionalHeader.SizeOfImage)
+#define IMAGE_BASE(pImageBase)	(NT_HEADERS(pImageBase)->OptionalHeader.ImageBase)
+#define IMAGE_ENTRYPOINT(pImageBase)	((PVOID)(OffsetToVA(pImageBase, NT_HEADERS(pImageBase)->OptionalHeader.AddressOfEntryPoint )))
+
+#define	RVA_DATA_DIRECTORY(pImageBase, Index)	((NT_HEADERS(pImageBase)->OptionalHeader.DataDirectory[Index].VirtualAddress))
+#define VA_DATA_DIRECTORY(pImageBase, Index)	((PVOID)(OffsetToVA(pImageBase, RVA_DATA_DIRECTORY(pImageBase, Index))))
+
+#define RELOC_BLOCKS_COUNT(pBR)	(( (pBR)->SizeOfBlock - sizeof( IMAGE_BASE_RELOCATION ) ) / sizeof( WORD ))
+#define RELOC_BLOCKS(pBR)	(PWORD(OffsetToVA(pBR, sizeof(IMAGE_BASE_RELOCATION))))
+#define	RELOC_DELTA(pImageBase)	((ULONG_PTR)pImageBase - IMAGE_BASE(pImageBase))
+#define RELOC_POINTER(pImageBase, pBR, BlockIndex)	((PULONG_PTR)(OffsetToVA(pImageBase, (pBR)->VirtualAddress + RELOC_BLOCKS(pBR)[BlockIndex] & 0xFFF )))
+#define RELOC_NEXT_BASERELOC(pBR)	((PIMAGE_BASE_RELOCATION)OffsetToVA(pBR, (pBR)->SizeOfBlock))
+
+#define IMPORT_OFT(pImageBase, pID)	((PIMAGE_THUNK_DATA)(OffsetToVA(pImageBase, (pID)->OriginalFirstThunk)))
+#define IMPORT_FT(pImageBase, pID)	((PIMAGE_THUNK_DATA)(OffsetToVA(pImageBase, (pID)->FirstThunk)))
+#define IMPORT_NAME(pImageBase, pID)	((LPCSTR)(OffsetToVA(pImageBase, (pID)->Name)))
+#define IMPORT_FUNC_ORDINAL(pID)		((pID)->u1.Ordinal)
+#define IMPORT_FUNC_NAME(pImageBase, pOFT)	((LPCSTR)((PIMAGE_IMPORT_BY_NAME)OffsetToVA(pImageBase, (pOFT)->u1.AddressOfData))->Name)
+#define IMPORT_NEXT_THUNK(pThunk)	((PIMAGE_THUNK_DATA)(OffsetToVA(pThunk, sizeof(IMAGE_THUNK_DATA))))
+#define IMPORT_NEXT_DESCRIPTOR(pID)	((PIMAGE_IMPORT_DESCRIPTOR)(OffsetToVA(pID, sizeof(IMAGE_IMPORT_DESCRIPTOR))))
+
 
 typedef
 HMODULE
@@ -48,40 +81,38 @@ DWORD WINAPI LibLoader( PVOID	Params )
 	PIMAGE_BASE_RELOCATION pBaseRelocation = LoaderParams->pBaseRelocation;
 
 	ULONG_PTR delta = (ULONG_PTR)LoaderParams->ImageBase - LoaderParams->pNtHeaders->OptionalHeader.ImageBase; // Calculate the delta
-
-	while ( pBaseRelocation->VirtualAddress )
+	
+	while ( pBaseRelocation->VirtualAddress &&
+		pBaseRelocation->SizeOfBlock >= sizeof( IMAGE_BASE_RELOCATION ) )
 	{
-		if ( pBaseRelocation->SizeOfBlock >= sizeof( IMAGE_BASE_RELOCATION ) )
+		DWORD blockCount = ( pBaseRelocation->SizeOfBlock - sizeof( IMAGE_BASE_RELOCATION ) ) / sizeof( WORD );
+		PWORD blockList = (PWORD)( pBaseRelocation + 1 );
+		WORD  blockOffset = 0;
+		for ( DWORD i = 0; i < blockCount; i++ )
 		{
-			int blockCount = ( pBaseRelocation->SizeOfBlock - sizeof( IMAGE_BASE_RELOCATION ) ) / sizeof( WORD );
-			PWORD blockList = (PWORD)( pBaseRelocation + 1 );
-
-			for ( int i = 0; i < blockCount; i++ )
+			if ( blockList[i] )
 			{
-				if ( blockList[i] )
-				{
-					PULONG_PTR relocPointer = (PULONG_PTR)( (LPBYTE)LoaderParams->ImageBase + ( pBaseRelocation->VirtualAddress + ( blockList[i] & 0xFFF ) ) );
-					*relocPointer += delta;
-				}
+				PULONG_PTR ptr = (PULONG_PTR)( (LPBYTE)LoaderParams->ImageBase + ( pBaseRelocation->VirtualAddress + ( blockList[i] & 0xFFF ) ) );
+				*ptr += delta;
 			}
 		}
 
 		// Go to next base-allocation block
-		pBaseRelocation = (PIMAGE_BASE_RELOCATION)( (LPBYTE)pBaseRelocation + pBaseRelocation->SizeOfBlock );
+		pBaseRelocation = RELOC_NEXT_BASERELOC( pBaseRelocation );
 	}
 
-	PIMAGE_IMPORT_DESCRIPTOR pIID = LoaderParams->pImportDirectory;
+	PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = LoaderParams->pImportDirectory;
 
 	// Resolve DLL imports
 	//printf("Go to IAT");
-	while ( pIID->Characteristics )
+	while ( pImportDescriptor->Characteristics )
 	{
-		PIMAGE_THUNK_DATA OrigFirstThunk = (PIMAGE_THUNK_DATA)( (LPBYTE)LoaderParams->ImageBase + pIID->OriginalFirstThunk );
-		PIMAGE_THUNK_DATA FirstThunk = (PIMAGE_THUNK_DATA)( (LPBYTE)LoaderParams->ImageBase + pIID->FirstThunk );
+		PIMAGE_THUNK_DATA OrigFirstThunk = (PIMAGE_THUNK_DATA)IMPORT_OFT(LoaderParams->ImageBase, pImportDescriptor);
+		PIMAGE_THUNK_DATA FirstThunk = (PIMAGE_THUNK_DATA)IMPORT_FT( LoaderParams->ImageBase, pImportDescriptor );
 
-		HMODULE hModule = LoaderParams->fnLoadLibraryA( (LPCSTR)( (LPBYTE)LoaderParams->ImageBase + pIID->Name ) );
+		HMODULE hModule = LoaderParams->fnLoadLibraryA(IMPORT_NAME(LoaderParams->ImageBase, pImportDescriptor ) );
 		if ( !hModule )
-			return ERROR_INVALID_PARAMETER;
+			return 5;
 
 		while ( OrigFirstThunk->u1.AddressOfData )
 		{
@@ -91,7 +122,7 @@ DWORD WINAPI LibLoader( PVOID	Params )
 				ULONG_PTR Function = (ULONG_PTR)LoaderParams->fnGetProcAddress( hModule,
 					(LPCSTR)( OrigFirstThunk->u1.Ordinal & 0xFFFF ) );
 				if ( !Function )
-					return ERROR_INVALID_PARAMETER;
+					return 1;
 
 				FirstThunk->u1.Function = Function;
 			}
@@ -99,9 +130,9 @@ DWORD WINAPI LibLoader( PVOID	Params )
 			{
 				// Import by name
 				PIMAGE_IMPORT_BY_NAME pIBN = (PIMAGE_IMPORT_BY_NAME)( (LPBYTE)LoaderParams->ImageBase + OrigFirstThunk->u1.AddressOfData );
-				ULONG_PTR Function = (ULONG_PTR)LoaderParams->fnGetProcAddress( hModule, (LPCSTR)pIBN->Name );
+				ULONG_PTR Function = (ULONG_PTR)LoaderParams->fnGetProcAddress( hModule, IMPORT_FUNC_NAME(LoaderParams->ImageBase, OrigFirstThunk) );
 				if ( !Function )
-					return ERROR_INVALID_PARAMETER;
+					return 2;
 
 				FirstThunk->u1.Function = Function;
 			}
@@ -110,7 +141,7 @@ DWORD WINAPI LibLoader( PVOID	Params )
 			FirstThunk++;
 		}
 		// Move to next import dll
-		pIID++;
+		pImportDescriptor++;
 	}
 
 	if ( LoaderParams->pNtHeaders->OptionalHeader.AddressOfEntryPoint )
@@ -120,10 +151,10 @@ DWORD WINAPI LibLoader( PVOID	Params )
 		if ( EntryPoint( (HMODULE)LoaderParams->ImageBase, DLL_PROCESS_ATTACH, NULL ) ) // Call the entry point
 			return ERROR_SUCCESS;
 		else
-			return ERROR_INVALID_PARAMETER;
+			return 3;
 	}
 
-	return ERROR_INVALID_PARAMETER;
+	return 4;
 }
 
 DWORD WINAPI stubFunc()
@@ -132,11 +163,19 @@ DWORD WINAPI stubFunc()
 }
 /*
 Manually Dll Inject:
+*****************************************
+
+MAKE SURE YOUR DLL ARE RELEASE BUILDED
+
+MAKE SURE YOUR INJECTOR ARE RELEASE BUILDED
+
+******************************************
 1. Load target dll into injector,
 2. Create memory-mapped file of it and write to target process
 3. Write loader to target process
 4. Create remote thread to execute loader
 */
+
 int _tmain()
 {
 	//
@@ -157,6 +196,7 @@ int _tmain()
 
 	HANDLE hProcess = OpenProcess( PROCESS_ALL_ACCESS, FALSE, pid );
 	if ( !hProcess )	ErrorExit( "Open target process failed." );
+
 
 	//
 	// Prepare injection parameters
@@ -228,66 +268,95 @@ int _tmain()
 
 	VirtualFreeEx( hProcess, remoteLoaderAddress, 0, MEM_RELEASE );
 
-
-	//ULONG_PTR delta = (ULONG_PTR)((LPBYTE)pMapAddress - pNtHeaders->OptionalHeader.ImageBase); // Calculate the delta
-
-	//while (pBaseRelocation->VirtualAddress)
-	//{
-	//	if (pBaseRelocation->SizeOfBlock >= sizeof(IMAGE_BASE_RELOCATION))
-	//	{
-	//		int blockCount = (pBaseRelocation->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
-	//		PWORD blockList = (PWORD)(pBaseRelocation + 1);
-
-	//		for (int i = 0; i < blockCount; i++)
-	//		{
-	//			if (blockList[i])
-	//			{
-	//				PULONG_PTR ptr = (PULONG_PTR)((LPBYTE)pMapAddress + (pBaseRelocation->VirtualAddress + (blockList[i] & 0xFFF)));
-	//				//*ptr += delta;
-	//			}
-	//		}
-	//	}
-
-	//	pBaseRelocation = (PIMAGE_BASE_RELOCATION)((LPBYTE)pBaseRelocation + pBaseRelocation->SizeOfBlock);
-	//}
-
-	//// Resolve DLL imports
-	//while (pImportDirectory->Characteristics)
-	//{
-	//	PIMAGE_THUNK_DATA OrigFirstThunk = (PIMAGE_THUNK_DATA)((LPBYTE)pMapAddress + pImportDirectory->OriginalFirstThunk);
-	//	PIMAGE_THUNK_DATA FirstThunk = (PIMAGE_THUNK_DATA)((LPBYTE)pMapAddress + pImportDirectory->FirstThunk);
-
-	//	HMODULE hModule = LoadLibraryA((LPCSTR)pMapAddress + pImportDirectory->Name);
-
-	//	if (!hModule)
-	//		return FALSE;
-
-	//	while (OrigFirstThunk->u1.AddressOfData)
-	//	{
-	//		if (OrigFirstThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
-	//		{
-	//			// Import by ordinal
-	//			ULONG_PTR Function = (ULONG_PTR)GetProcAddress(hModule,
-	//				(LPCSTR)(OrigFirstThunk->u1.Ordinal & 0xFFFF));
-
-	//			if (!Function)
-	//				return FALSE;
-
-	//			FirstThunk->u1.Function = Function;
-	//		}
-	//		else
-	//		{
-	//			// Import by name
-	//			PIMAGE_IMPORT_BY_NAME pIBN = (PIMAGE_IMPORT_BY_NAME)((LPBYTE)pMapAddress + OrigFirstThunk->u1.AddressOfData);
-	//			ULONG_PTR Function = (ULONG_PTR)GetProcAddress(hModule, (LPCSTR)pIBN->Name);
-	//			if (!Function)
-	//				return FALSE;
-
-	//			//FirstThunk->u1.Function = Function;
-	//		}
-	//		OrigFirstThunk++;
-	//		FirstThunk++;
-	//	}
-	//	pImportDirectory++;
-	//}
+	system( "PAUSE" );
 }
+
+#pragma region test
+//// Target Dll's DOS Header
+//PIMAGE_DOS_HEADER pDosHeader = DOS_HEADER(pMapAddress);
+//// Target Dll's NT Headers
+//PIMAGE_NT_HEADERS pNtHeaders = NT_HEADERS(pMapAddress);
+//DWORD	imageSize = IMAGE_SIZE(pMapAddress);
+//ULONG_PTR	loaderSize = (ULONG_PTR)stubFunc - (ULONG_PTR)LibLoader;
+//log_debug( "Loader size : %x -- Dll image size : %x", loaderSize, imageSize );
+//// Target Dll's Section Header
+//PIMAGE_SECTION_HEADER pSectHeader = SEC_HEADER(pMapAddress);
+
+//PIMAGE_BASE_RELOCATION pBaseRelocation = ( PIMAGE_BASE_RELOCATION)VA_DATA_DIRECTORY( pMapAddress, IMAGE_DIRECTORY_ENTRY_BASERELOC );
+//PIMAGE_IMPORT_DESCRIPTOR	pImportDirectory = (PIMAGE_IMPORT_DESCRIPTOR)VA_DATA_DIRECTORY( pMapAddress, IMAGE_DIRECTORY_ENTRY_IMPORT );
+
+//ULONG_PTR delta = RELOC_DELTA(pMapAddress); // Calculate the delta
+//PIMAGE_BASE_RELOCATION pBR2 = pBaseRelocation;
+//PIMAGE_IMPORT_DESCRIPTOR pID2 = pImportDirectory;
+//while (pBaseRelocation->VirtualAddress)
+//{
+//	if (pBaseRelocation->SizeOfBlock >= sizeof(IMAGE_BASE_RELOCATION))
+//	{
+//		int blockCount = RELOC_BLOCKS_COUNT(pBaseRelocation);
+//		PWORD blockList = RELOC_BLOCKS(pBaseRelocation);
+
+//		for (int i = 0; i < blockCount; i++)
+//		{
+//			if (blockList[i])
+//			{
+//				PULONG_PTR ptr = (PULONG_PTR)((LPBYTE)pMapAddress + (pBaseRelocation->VirtualAddress + (blockList[i] & 0xFFF)));
+//				PULONG_PTR ptr2 = RELOC_POINTER( pMapAddress, pBaseRelocation, i );
+//				ULONG_PTR a = *ptr + *ptr2;
+//			}
+//		}
+//	}
+
+//	pBaseRelocation = (PIMAGE_BASE_RELOCATION)((LPBYTE)pBaseRelocation + pBaseRelocation->SizeOfBlock);
+//	pBR2 = RELOC_NEXT_BASERELOC( pBR2 );
+//}
+
+//// Resolve DLL imports
+//while (pImportDirectory->Characteristics)
+//{
+//	PIMAGE_THUNK_DATA OrigFirstThunk = (PIMAGE_THUNK_DATA)((LPBYTE)pMapAddress + pImportDirectory->OriginalFirstThunk);
+//	PIMAGE_THUNK_DATA	oft = IMPORT_OFT( pMapAddress, pImportDirectory );
+//	PIMAGE_THUNK_DATA FirstThunk = (PIMAGE_THUNK_DATA)((LPBYTE)pMapAddress + pImportDirectory->FirstThunk);
+//	PIMAGE_THUNK_DATA ft = IMPORT_FT( pMapAddress, pImportDirectory );
+
+//	HMODULE hModule = LoadLibraryA((LPCSTR)pMapAddress + pImportDirectory->Name);
+//	LPCSTR	importName = IMPORT_NAME( pMapAddress, pImportDirectory );
+//	if (!hModule)
+//		return FALSE;
+
+//	while (OrigFirstThunk->u1.AddressOfData)
+//	{
+//		if (OrigFirstThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
+//		{
+//			// Import by ordinal
+//			ULONG_PTR Function = (ULONG_PTR)GetProcAddress(hModule,
+//				(LPCSTR)(OrigFirstThunk->u1.Ordinal & 0xFFFF));
+
+//			if (!Function)
+//				return FALSE;
+
+//			FirstThunk->u1.Function = Function;
+//		}
+//		else
+//		{
+//			// Import by name
+//			PIMAGE_IMPORT_BY_NAME pIBN = (PIMAGE_IMPORT_BY_NAME)((LPBYTE)pMapAddress + OrigFirstThunk->u1.AddressOfData);
+//			LPCSTR pIBN2 = IMPORT_FUNC_NAME( pMapAddress, OrigFirstThunk );
+//			ULONG_PTR Function = (ULONG_PTR)GetProcAddress(hModule, (LPCSTR)pIBN->Name);
+//			if (!Function)
+//				return FALSE;
+
+//			//FirstThunk->u1.Function = Function;
+//		}
+//		OrigFirstThunk++;
+//		FirstThunk++;
+//		oft = IMPORT_NEXT_THUNK( oft );
+//		ft = IMPORT_NEXT_THUNK( ft );
+//	}
+//	pImportDirectory++;
+//	pID2 = IMPORT_NEXT_DESCRIPTOR( pID2 );
+//}
+
+//PVOID dllmain = IMAGE_ENTRYPOINT( pMapAddress );
+
+//return 0;
+#pragma endregion
