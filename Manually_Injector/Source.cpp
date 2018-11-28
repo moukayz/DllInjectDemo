@@ -5,7 +5,9 @@
 #include "..\Common\utils.hpp"
 
 #define DLLPATH _T("d:\\repos\\DllInjectDemo\\Bin\\MyDll.dll")
-#define TARGET_PROCESS	_T("Code.exe")
+#define TARGET_PROCESS	_T("MyWindowProgram.exe")
+
+#define GetModuleFuncAddress(ModuleName, FuncName)	(LPVOID)(GetProcAddress(LoadLibrary(_T(ModuleName)), _T(FuncName)))
 
 #define INVALID_HANDLE(handle)	(handle == INVALID_HANDLE_VALUE)
 #define OffsetToVA(address, offset)	((ULONG_PTR)(address) + (offset))
@@ -26,6 +28,7 @@
 
 #define	RVA_DATA_DIRECTORY(pImageBase, Index)	((NT_HEADERS(pImageBase)->OptionalHeader.DataDirectory[Index].VirtualAddress))
 #define VA_DATA_DIRECTORY(pImageBase, Index)	((PVOID)(OffsetToVA(pImageBase, RVA_DATA_DIRECTORY(pImageBase, Index))))
+#define REMOTE_DATA_DIRECTORY(pRemote, pImageBase, Index)	((PVOID)(OffsetToVA(pRemote, RVA_DATA_DIRECTORY(pImageBase, Index))))
 
 #define RELOC_BLOCKS_COUNT(pBR)	(( (pBR)->SizeOfBlock - sizeof( IMAGE_BASE_RELOCATION ) ) / sizeof( WORD ))
 #define RELOC_BLOCKS(pBR)	(PWORD(OffsetToVA(pBR, sizeof(IMAGE_BASE_RELOCATION))))
@@ -77,22 +80,23 @@ typedef struct _LOADER_PARAMS
 DWORD WINAPI LibLoader( PVOID	Params )
 {
 	PLOADER_PARAMS LoaderParams = (PLOADER_PARAMS)Params;
+	PVOID pImageBase = LoaderParams->ImageBase;
 
 	PIMAGE_BASE_RELOCATION pBaseRelocation = LoaderParams->pBaseRelocation;
+	PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = LoaderParams->pImportDirectory;
 
-	ULONG_PTR delta = (ULONG_PTR)LoaderParams->ImageBase - LoaderParams->pNtHeaders->OptionalHeader.ImageBase; // Calculate the delta
-	
+	ULONG_PTR delta = RELOC_DELTA(pImageBase); // Calculate the delta
 	while ( pBaseRelocation->VirtualAddress &&
 		pBaseRelocation->SizeOfBlock >= sizeof( IMAGE_BASE_RELOCATION ) )
 	{
-		DWORD blockCount = ( pBaseRelocation->SizeOfBlock - sizeof( IMAGE_BASE_RELOCATION ) ) / sizeof( WORD );
-		PWORD blockList = (PWORD)( pBaseRelocation + 1 );
-		WORD  blockOffset = 0;
+		DWORD blockCount = RELOC_BLOCKS_COUNT(pBaseRelocation);
+		PWORD blockList = RELOC_BLOCKS(pBaseRelocation);
 		for ( DWORD i = 0; i < blockCount; i++ )
 		{
 			if ( blockList[i] )
 			{
-				PULONG_PTR ptr = (PULONG_PTR)( (LPBYTE)LoaderParams->ImageBase + ( pBaseRelocation->VirtualAddress + ( blockList[i] & 0xFFF ) ) );
+				/*PULONG_PTR ptr = (PULONG_PTR)( (LPBYTE)pImageBase + ( pBaseRelocation->VirtualAddress + ( blockList[i] & 0xFFF ) ) );*/
+				PULONG_PTR ptr = RELOC_POINTER( pImageBase, pBaseRelocation, i );
 				*ptr += delta;
 			}
 		}
@@ -101,16 +105,13 @@ DWORD WINAPI LibLoader( PVOID	Params )
 		pBaseRelocation = RELOC_NEXT_BASERELOC( pBaseRelocation );
 	}
 
-	PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = LoaderParams->pImportDirectory;
-
 	// Resolve DLL imports
-	//printf("Go to IAT");
 	while ( pImportDescriptor->Characteristics )
 	{
-		PIMAGE_THUNK_DATA OrigFirstThunk = (PIMAGE_THUNK_DATA)IMPORT_OFT(LoaderParams->ImageBase, pImportDescriptor);
-		PIMAGE_THUNK_DATA FirstThunk = (PIMAGE_THUNK_DATA)IMPORT_FT( LoaderParams->ImageBase, pImportDescriptor );
+		PIMAGE_THUNK_DATA OrigFirstThunk = (PIMAGE_THUNK_DATA)IMPORT_OFT(pImageBase, pImportDescriptor);
+		PIMAGE_THUNK_DATA FirstThunk = (PIMAGE_THUNK_DATA)IMPORT_FT( pImageBase, pImportDescriptor );
 
-		HMODULE hModule = LoaderParams->fnLoadLibraryA(IMPORT_NAME(LoaderParams->ImageBase, pImportDescriptor ) );
+		HMODULE hModule = LoaderParams->fnLoadLibraryA(IMPORT_NAME(pImageBase, pImportDescriptor ) );
 		if ( !hModule )
 			return 5;
 
@@ -129,26 +130,25 @@ DWORD WINAPI LibLoader( PVOID	Params )
 			else
 			{
 				// Import by name
-				PIMAGE_IMPORT_BY_NAME pIBN = (PIMAGE_IMPORT_BY_NAME)( (LPBYTE)LoaderParams->ImageBase + OrigFirstThunk->u1.AddressOfData );
-				ULONG_PTR Function = (ULONG_PTR)LoaderParams->fnGetProcAddress( hModule, IMPORT_FUNC_NAME(LoaderParams->ImageBase, OrigFirstThunk) );
+				ULONG_PTR Function = (ULONG_PTR)LoaderParams->fnGetProcAddress( hModule, IMPORT_FUNC_NAME(pImageBase, OrigFirstThunk) );
 				if ( !Function )
 					return 2;
 
 				FirstThunk->u1.Function = Function;
 			}
 			// Move to next import function
-			OrigFirstThunk++;
-			FirstThunk++;
+			OrigFirstThunk = IMPORT_NEXT_THUNK(OrigFirstThunk);
+			FirstThunk = IMPORT_NEXT_THUNK( FirstThunk );
 		}
 		// Move to next import dll
-		pImportDescriptor++;
+		pImportDescriptor = IMPORT_NEXT_DESCRIPTOR(pImportDescriptor);
 	}
 
 	if ( LoaderParams->pNtHeaders->OptionalHeader.AddressOfEntryPoint )
 	{
-		pDllMain EntryPoint = (pDllMain)( (LPBYTE)LoaderParams->ImageBase + LoaderParams->pNtHeaders->OptionalHeader.AddressOfEntryPoint );
+		pDllMain EntryPoint = (pDllMain)IMAGE_ENTRYPOINT(pImageBase);
 
-		if ( EntryPoint( (HMODULE)LoaderParams->ImageBase, DLL_PROCESS_ATTACH, NULL ) ) // Call the entry point
+		if ( EntryPoint( (HMODULE)pImageBase, DLL_PROCESS_ATTACH, NULL ) ) // Call the entry point
 			return ERROR_SUCCESS;
 		else
 			return 3;
@@ -157,6 +157,7 @@ DWORD WINAPI LibLoader( PVOID	Params )
 	return 4;
 }
 
+// Stub function used to calculate loader's size
 DWORD WINAPI stubFunc()
 {
 	return 0;
@@ -202,18 +203,17 @@ int _tmain()
 	// Prepare injection parameters
 	//
 
-	// Target Dll's DOS Header
-	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)pMapAddress;
-	// Target Dll's NT Headers
-	PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)( (LPBYTE)pMapAddress + pDosHeader->e_lfanew );
-	DWORD	imageSize = pNtHeaders->OptionalHeader.SizeOfImage;
+	PIMAGE_DOS_HEADER pDosHeader = DOS_HEADER(pMapAddress);
+	PIMAGE_NT_HEADERS pNtHeaders = NT_HEADERS(pMapAddress);
+	PIMAGE_SECTION_HEADER pSectHeader = SEC_HEADER(pMapAddress);
+	DWORD	imageSize = IMAGE_SIZE(pMapAddress);
 	ULONG_PTR	loaderSize = (ULONG_PTR)stubFunc - (ULONG_PTR)LibLoader;
 	log_debug( "Loader size : %x -- Dll image size : %x", loaderSize, imageSize );
-	// Target Dll's Section Header
-	PIMAGE_SECTION_HEADER pSectHeader = (PIMAGE_SECTION_HEADER)( (LPBYTE)pNtHeaders + sizeof( IMAGE_NT_HEADERS ) );
 
-	LPVOID fnLoadLibraryA = GetProcAddress( LoadLibraryA( "KERNEL32.DLL" ), "LoadLibraryA" );
-	LPVOID fnGetProcAddress = GetProcAddress( LoadLibraryA( "KERNEL32.DLL" ), "GetProcAddress" );
+	LPVOID fnLoadLibraryA = GetModuleFuncAddress( "KERNEL32.DLL", "LoadLibraryA" );
+		/*GetProcAddress( LoadLibraryA( "KERNEL32.DLL" ), "LoadLibraryA" );*/
+	LPVOID fnGetProcAddress = GetModuleFuncAddress( "KERNEL32.DLL", "GetProcAddress" );
+		/*GetProcAddress( LoadLibraryA( "KERNEL32.DLL" ), "GetProcAddress" );*/
 	if ( !fnLoadLibraryA || !fnGetProcAddress )	ErrorExit( "Get loader function address failed." );
 
 
@@ -232,10 +232,25 @@ int _tmain()
 	LOADER_PARAMS loaderParams = { 0 };
 	loaderParams.fnGetProcAddress = (pGetProcAddress)fnGetProcAddress;
 	loaderParams.fnLoadLibraryA = (pLoadLibraryA)fnLoadLibraryA;
-	loaderParams.pBaseRelocation = (PIMAGE_BASE_RELOCATION)( (LPBYTE)remoteImageBase + pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress );
-	loaderParams.pImportDirectory = (PIMAGE_IMPORT_DESCRIPTOR)( (LPBYTE)remoteImageBase + pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress );
-	loaderParams.pNtHeaders = (PIMAGE_NT_HEADERS)( (LPBYTE)remoteImageBase + pDosHeader->e_lfanew );
+	//loaderParams.pBaseRelocation = (PIMAGE_BASE_RELOCATION)( (LPBYTE)remoteImageBase + pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress );
+	//loaderParams.pImportDirectory = (PIMAGE_IMPORT_DESCRIPTOR)( (LPBYTE)remoteImageBase + pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress );
+	loaderParams.pBaseRelocation = (PIMAGE_BASE_RELOCATION)REMOTE_DATA_DIRECTORY( remoteImageBase, pMapAddress, IMAGE_DIRECTORY_ENTRY_BASERELOC );
+	loaderParams.pImportDirectory = (PIMAGE_IMPORT_DESCRIPTOR)REMOTE_DATA_DIRECTORY( remoteImageBase, pMapAddress, IMAGE_DIRECTORY_ENTRY_IMPORT );
+	loaderParams.pNtHeaders = (PIMAGE_NT_HEADERS)OffsetToVA(remoteImageBase, pDosHeader->e_lfanew);
 	loaderParams.ImageBase = remoteImageBase;
+	log_debug("RemoteLoader parameters:"
+		"\n\nRemoteImageBase : %p"
+		"\nNtHeaders : %p"
+		"\nImportDirectory : %p"
+		"\nBaseRelocation  : %p"
+		"\nLoadLibrary	: %p"
+		"\nGetProcAddress : %p\n",
+		remoteImageBase,
+		loaderParams.pNtHeaders,
+		loaderParams.pImportDirectory,
+		loaderParams.pBaseRelocation,
+		loaderParams.fnLoadLibraryA,
+		loaderParams.fnGetProcAddress );
 
 	// Allocate loader and its params together
 	PVOID remoteLoaderAddress = VirtualAllocEx( hProcess, NULL, loaderSize + sizeof( LOADER_PARAMS ), MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE );
