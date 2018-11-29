@@ -5,7 +5,7 @@
 #include "..\Common\utils.hpp"
 
 #define DLLPATH _T("d:\\repos\\DllInjectDemo\\Bin\\MyDll.dll")
-#define TARGET_PROCESS	_T("MyWindowProgram.exe")
+#define TARGET_PROCESS	_T("MyProgram.exe")
 
 #define GetModuleFuncAddress(ModuleName, FuncName)	(LPVOID)(GetProcAddress(LoadLibrary(_T(ModuleName)), _T(FuncName)))
 
@@ -33,7 +33,7 @@
 #define RELOC_BLOCKS_COUNT(pBR)	(( (pBR)->SizeOfBlock - sizeof( IMAGE_BASE_RELOCATION ) ) / sizeof( WORD ))
 #define RELOC_BLOCKS(pBR)	(PWORD(OffsetToVA(pBR, sizeof(IMAGE_BASE_RELOCATION))))
 #define	RELOC_DELTA(pImageBase)	((ULONG_PTR)pImageBase - IMAGE_BASE(pImageBase))
-#define RELOC_POINTER(pImageBase, pBR, BlockIndex)	((PULONG_PTR)(OffsetToVA(pImageBase, (pBR)->VirtualAddress + RELOC_BLOCKS(pBR)[BlockIndex] & 0xFFF )))
+#define RELOC_POINTER(pImageBase, pBR, BlockIndex)	((PULONG_PTR)(OffsetToVA(pImageBase, (pBR)->VirtualAddress + (RELOC_BLOCKS(pBR)[BlockIndex] & 0xFFF ))))
 #define RELOC_NEXT_BASERELOC(pBR)	((PIMAGE_BASE_RELOCATION)OffsetToVA(pBR, (pBR)->SizeOfBlock))
 
 #define IMPORT_OFT(pImageBase, pID)	((PIMAGE_THUNK_DATA)(OffsetToVA(pImageBase, (pID)->OriginalFirstThunk)))

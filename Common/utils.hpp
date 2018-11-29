@@ -164,33 +164,6 @@ inline BOOLEAN GetProcessGUIThreadInfo(PGUI_INFO pGUIInfo)
 		return FALSE;
 
 	return TRUE;
-		//HANDLE  hThreadSnap = NULL;
-		//THREADENTRY32 te32;
-		//GUITHREADINFO guiInfo = { 0 };
-		//guiInfo.cbSize = sizeof(GUITHREADINFO);
-
-		//// Take a snapshot of all running threads
-		//hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-		//if (hThreadSnap == INVALID_HANDLE_VALUE)
-		//	ErrorExit(TEXT("Cannot create thread snapshot!"));
-
-		//te32.dwSize = sizeof(THREADENTRY32);
-		//// Retrieve infomation about the frist thread
-		//if (!Thread32First(hThreadSnap, &te32))
-		//	ErrorExit(TEXT("Cannot get the handle of the first thread!"));
-
-
-		//while (te32.th32OwnerProcessID != dwOwnerPID)
-		//{
-		//	Thread32Next(hThreadSnap, &te32);
-		//	// Check if the thread belongs to target process and has GUI 
-		//	if (te32.th32OwnerProcessID == dwOwnerPID &&
-		//		GetGUIThreadInfo(te32.th32ThreadID, &guiInfo))
-		//	{
-		//		return te32.th32ThreadID;
-		//	}
-		//}
-
-		//return 0;
+	
 }
 
